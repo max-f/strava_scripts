@@ -1,0 +1,10 @@
+# bytecode
+__pycache__/
+*.py[cod]
+
+# PyCharm
+.idea/
+
+# Specific files
+todo.txt
+token
