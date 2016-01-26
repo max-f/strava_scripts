@@ -29,8 +29,10 @@ def cli(config, token):
 @cli.command()
 @click.option('--friend_id', type=int, help='Friend ID to compare the segments'
               ' with')
+@click.option('--time', is_flag=True, help='Sort segments by time relative '
+              'to the other athletes')
 @pass_config
-def segment_ranking(config, friend_id):
+def segment_ranking(config, time, friend_id):
     client = config.client
     # test
     b = datetime.datetime(2015, 8, 10, 0, 0, 0)
@@ -45,14 +47,18 @@ def segment_ranking(config, friend_id):
         for effort in a.segment_efforts:
             try:
                 segments[effort.segment.id].efforts = segments[effort.segment.id].efforts + 1
+                segments[effort.segment.id].effort_times.append(effort.elapsed_time)
             except KeyError:
                 segments[effort.segment.id] = riddensegment.RiddenSegment(effort.segment.id,
                                                                           effort.segment.name,
-                                                                          effort.segment.athlete_count)
+                                                                          [effort.elapsed_time])
     for v in sorted(segments.values(), key=lambda v: v.efforts, reverse=True):
-        print u'Tried {0} {1} times. Overall {2} athletes '
-        'recorded'.format(v.name, v.efforts, v.athlete_count)
+        print u'Tries: %3d - athletes recorded: %4d - Segment: %.30s' % (v.efforts, v.athlete_count, v.name)
     return
+
+@pass_config
+def segment_object(config, id):
+    pass
 
 
 @click.command()
@@ -72,6 +78,7 @@ def plot(config):
     #sns.distplot(X)
     plt.show()
     """
+
 
 if __name__ == '__main__':
     cli()
