@@ -8,3 +8,5 @@ __pycache__/
 # Specific files
 todo.txt
 token
+data
+timestamp.csv
