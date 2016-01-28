@@ -1,13 +1,17 @@
 #!/usr/bin/env python
-import copy
+import os
 import datetime
 import time
 import cPickle
+import csv
 
 import click
 from stravalib.client import Client
 
 import riddensegment
+
+DATAFILE = 'data'
+TIMESTAMP = 'timestamp.csv'
 
 class Config(object):
 
@@ -30,24 +34,45 @@ def cli(config, token):
 @pass_config
 def init(config):
     client = config.client
-    d = datetime.datetime(year=2015, month=7, day=10)
-    activities = client.get_activities(before=d, limit=2)
+    if os.path.isfile(DATAFILE) and os.path.isfile(TIMESTAMP):
+        with open(TIMESTAMP) as csvfile:
+            reader = csv.DictReader(csvfile)
+            timestamp = reader.next()
+            print timestamp
+            time = timestamp['date']
+            count = timestamp['ridden_segments']
+        click.secho('There is already a data file with %4s rides synced' % count, fg='red')
+        click.confirm('Continue init and overwrite existing data?', default=False, abort=True)
+
+    activities = client.get_activities()
     ridden_segs = {}
     sync_data(config, activities, ridden_segs)
 
+
+
 def sync_data(config, activities, ridden_segs):
+    activities = [a for a in activities]  # Get list instead of iterator
+    activities.reverse()  # Oldest activity first
     activity_ids = [a.id for a in activities if a.type == unicode('Ride')]
     click.echo('%4d rides not synced' % len(activity_ids))
     value = click.prompt('How many of those rides should be synced this time?', type=int)
     activity_ids = activity_ids[:value]
-    ridden_segs = {}
+
     for chunk in list_chunks(activity_ids, 2):
         ridden_segs = crawl_activities(config, chunk, ridden_segs)
-        # Prevent too many API requests in short time
-        time.sleep(0)
+        time.sleep(0)  # Prevent too many API requests in short time
     click.echo('-- DONE: %3d rides synced --' % len(activity_ids))
+
+    last_sync_date = activities[value - 1].start_date  # Get date of the last synced activity
+    with open(TIMESTAMP, 'w') as csvfile:
+        fieldnames = ['date', 'id_last_activity', 'ridden_segments']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow({'date': last_sync_date, 'id_last_activity': activity_ids[-1],
+                         'ridden_segments': len(ridden_segs)})
     with open('data', 'wb') as f:
         cPickle.dump(ridden_segs, f)
+
 
 def crawl_activities(config, activity_ids, ridden_segs):
     client = config.client
@@ -64,9 +89,11 @@ def crawl_activities(config, activity_ids, ridden_segs):
 
     return ridden_segs
 
+
 def list_chunks(l, n):
     for i in xrange(0, len(l), n):
         yield l[i:i + n]
+
 
 def unique_elements(l, idfun=None):
     # order preserving
