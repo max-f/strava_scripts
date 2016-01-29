@@ -35,12 +35,7 @@ def cli(config, token):
 def init(config):
     client = config.client
     if os.path.isfile(DATAFILE) and os.path.isfile(TIMESTAMP):
-        with open(TIMESTAMP) as csvfile:
-            reader = csv.DictReader(csvfile)
-            timestamp = reader.next()
-            print timestamp
-            time = timestamp['date']
-            count = timestamp['ridden_segments']
+        date, _, count = read_timestamp(TIMESTAMP)
         click.secho('There is already a data file with %4s rides synced' % count, fg='red')
         click.confirm('Continue init and overwrite existing data?', default=False, abort=True)
 
@@ -49,9 +44,8 @@ def init(config):
     sync_data(config, activities, ridden_segs)
 
 
-
 def sync_data(config, activities, ridden_segs):
-    activities = [a for a in activities]  # Get list instead of iterator
+    activities = [a for a in activities]  # Get list instead of iterator, for reversing
     activities.reverse()  # Oldest activity first
     activity_ids = [a.id for a in activities if a.type == unicode('Ride')]
     click.echo('%4d rides not synced' % len(activity_ids))
@@ -108,12 +102,36 @@ def unique_elements(l, idfun=None):
         result.append(e)
     return result
 
+
 @cli.command()
 @pass_config
 def update(config):
-    pass
+    client = config.client
 
-def read(filename):
+    if not os.path.isfile(DATAFILE) or not os.path.isfile(TIMESTAMP):
+        click.secho('Necessary data and/or timestamp file not found. Use init instead.', fg='red')
+
+    date, id_last_activity, count = read_timestamp(TIMESTAMP)
+    print date
+    activities = client.get_activities(after=date)
+    ridden_segs = read_data(DATAFILE)
+
+    sync_data(config, activities, ridden_segs)
+
+
+def read_timestamp(filename):
+    with open(filename) as f:
+        reader = csv.DictReader(f)
+        timestamp = reader.next()
+        date = timestamp['date']
+        date = date[:19]  # No timezone info as strptime can't handle it
+        id_last_activity = timestamp['id_last_activity']
+        count = int(timestamp['ridden_segments'])
+        date = datetime.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+    return date, id_last_activity, count
+
+
+def read_data(filename):
     with open(filename, 'rb') as f:
         d = cPickle.load(f)
     return d
