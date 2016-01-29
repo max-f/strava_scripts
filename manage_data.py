@@ -41,12 +41,30 @@ def init(config):
 
     activities = client.get_activities()
     ridden_segs = {}
+    sync_data(config, activities, ridden_segs, update=False)
+
+
+@cli.command()
+@pass_config
+def update(config):
+    client = config.client
+
+    if not os.path.isfile(DATAFILE) or not os.path.isfile(TIMESTAMP):
+        click.secho('Necessary data and/or timestamp file not found. Use init instead.', fg='red')
+        return
+
+    date, id_last_activity, count = read_timestamp(TIMESTAMP)
+    print date
+    activities = client.get_activities(after=date)
+    ridden_segs = read_data(DATAFILE)
+
     sync_data(config, activities, ridden_segs)
 
 
-def sync_data(config, activities, ridden_segs):
-    activities = [a for a in activities]  # Get list instead of iterator, for reversing
-    activities.reverse()  # Oldest activity first
+def sync_data(config, activities, ridden_segs, update=True):
+    activities = [a for a in activities]  # Get list instead of iterator, for reversing and indexing
+    if not update:  # If after is set for 'get_activities', the result will already start with the oldest activity
+        activities.reverse()  # Oldest activity first
     activity_ids = [a.id for a in activities if a.type == unicode('Ride')]
     click.echo('%4d rides not synced' % len(activity_ids))
     value = click.prompt('How many of those rides should be synced this time?', type=int)
@@ -58,6 +76,7 @@ def sync_data(config, activities, ridden_segs):
     click.echo('-- DONE: %3d rides synced --' % len(activity_ids))
 
     last_sync_date = activities[value - 1].start_date  # Get date of the last synced activity
+    print 'Last sync date: %s' % last_sync_date
     with open(TIMESTAMP, 'w') as csvfile:
         fieldnames = ['date', 'id_last_activity', 'ridden_segments']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -101,22 +120,6 @@ def unique_elements(l, idfun=None):
         seen[marker] = 1
         result.append(e)
     return result
-
-
-@cli.command()
-@pass_config
-def update(config):
-    client = config.client
-
-    if not os.path.isfile(DATAFILE) or not os.path.isfile(TIMESTAMP):
-        click.secho('Necessary data and/or timestamp file not found. Use init instead.', fg='red')
-
-    date, id_last_activity, count = read_timestamp(TIMESTAMP)
-    print date
-    activities = client.get_activities(after=date)
-    ridden_segs = read_data(DATAFILE)
-
-    sync_data(config, activities, ridden_segs)
 
 
 def read_timestamp(filename):
