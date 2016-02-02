@@ -8,10 +8,11 @@ import csv
 import click
 from stravalib.client import Client
 
-import riddensegment
+import entities
 
 DATAFILE = 'data'
 TIMESTAMP = 'timestamp.csv'
+
 
 class Config(object):
 
@@ -30,13 +31,14 @@ def cli(config, token):
     access_token = token.read().replace('\n', '')
     client.access_token = access_token
 
+
 @cli.command()
 @pass_config
 def init(config):
     client = config.client
     if os.path.isfile(DATAFILE) and os.path.isfile(TIMESTAMP):
         date, _, count = read_timestamp(TIMESTAMP)
-        click.secho('There is already a data file with %4s rides synced' % count, fg='red')
+        click.secho('There is already a data file with %4s ridden segments synced' % count, fg='red')
         click.confirm('Continue init and overwrite existing data?', default=False, abort=True)
 
     activities = client.get_activities()
@@ -54,8 +56,11 @@ def update(config):
         return
 
     date, id_last_activity, count = read_timestamp(TIMESTAMP)
-    print date
     activities = client.get_activities(after=date)
+
+    if not any(True for _ in activities):  # Check if any activity is returned from the iterator
+        click.secho('All rides already synced.', fg='green')
+        return
     ridden_segs = read_data(DATAFILE)
 
     sync_data(config, activities, ridden_segs)
@@ -65,6 +70,7 @@ def sync_data(config, activities, ridden_segs, update=True):
     activities = [a for a in activities]  # Get list instead of iterator, for reversing and indexing
     if not update:  # If after is set for 'get_activities', the result will already start with the oldest activity
         activities.reverse()  # Oldest activity first
+
     activity_ids = [a.id for a in activities if a.type == unicode('Ride')]
     click.echo('%4d rides not synced' % len(activity_ids))
     value = click.prompt('How many of those rides should be synced this time?', type=int)
@@ -76,14 +82,14 @@ def sync_data(config, activities, ridden_segs, update=True):
     click.echo('-- DONE: %3d rides synced --' % len(activity_ids))
 
     last_sync_date = activities[value - 1].start_date  # Get date of the last synced activity
-    print 'Last sync date: %s' % last_sync_date
+    click.echo('Last sync date: %s' % last_sync_date)
     with open(TIMESTAMP, 'w') as csvfile:
         fieldnames = ['date', 'id_last_activity', 'ridden_segments']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerow({'date': last_sync_date, 'id_last_activity': activity_ids[-1],
                          'ridden_segments': len(ridden_segs)})
-    with open('data', 'wb') as f:
+    with open(DATAFILE, 'wb') as f:
         cPickle.dump(ridden_segs, f)
 
 
@@ -94,11 +100,14 @@ def crawl_activities(config, activity_ids, ridden_segs):
     activities_complete = [client.get_activity(id, include_all_efforts=True) for id in activity_ids]
     for a in activities_complete:
         for effort in a.segment_efforts:
+            my_effort = entities.Effort(effort.start_date, effort.segment.id, effort.elapsed_time,
+                                        effort.average_heartrate, effort.average_watts)
             s = client.get_segment(effort.segment.id)
             if s.id not in ridden_segs:
-                ridden_segs[s.id] = riddensegment.RiddenSegment(s.id, s.name, s, [effort])
+                ridden_segs[s.id] = entities.RiddenSegment(s.id, s.name, s.distance, s.total_elevation_gain,
+                                                           s.average_grade, [my_effort])
             else:
-                ridden_segs[s.id].efforts.append(effort)
+                ridden_segs[s.id].efforts.append(my_effort)
 
     return ridden_segs
 

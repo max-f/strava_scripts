@@ -1,19 +1,16 @@
 #!/usr/bin/envy python2
 
-#import datetime
+import datetime
+import numpy as np
 
 import click
 #import matplotlib.pyplot as plt
-from stravalib.client import Client
 
-from manage_data import read
+from manage_data import Config, read_data
 
-class Config(object):
+pass_config = click.make_pass_decorator(Config, ensure=True)
 
-    def __init__(self):
-        self.client = Client()
-
-pass_config= click.make_pass_decorator(Config, ensure=True)
+DATAFILE = 'data'
 
 @click.group()
 @click.argument('token', type=click.File('r'))
@@ -29,13 +26,16 @@ def cli(config, token):
 @cli.command()
 @click.option('--time', is_flag=True, help='Sort segments by time relative '
               'to the other athletes. Default is sorting by effort count.')
-@click.argument('--data', type=str)
 @pass_config
-def segment_ranking(config, data, time):
-    ridden_segs = read(data)
-    for v in sorted(ridden_segs.values(), key=lambda v: v.efforts, reverse=True):
-        print u'Tries: %3d - athletes recorded: %4d - Segment: %.30s' % (len(v.efforts),
-                                                                         v.segment.athlete_count, v.name)
+def segment_ranking(config, time):
+    ridden_segs = read_data(DATAFILE)
+    for v in sorted(ridden_segs.values(), key=lambda v: len(v.efforts), reverse=True):
+        times = [e.elapsed_time.total_seconds() for e in v.efforts]
+        avg_time = np.mean(times)
+        std_dev = np.std(times)
+        print (u'Tries: %3d - Elevation gain: %4d - Average time: %4d sec. - '
+        'Std. variation in time: %3d sec. - Segment: %.30s' % (len(v.efforts), v.total_elevation_gain, avg_time, std_dev,
+                                                         v.name))
     return
 
 
