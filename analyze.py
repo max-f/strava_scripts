@@ -1,11 +1,11 @@
 #!/usr/bin/envy python2
 
+import collections
 import datetime
 import numpy as np
 
 import click
 #import matplotlib.pyplot as plt
-
 from manage_data import Config, read_data
 
 pass_config = click.make_pass_decorator(Config, ensure=True)
@@ -24,20 +24,58 @@ def cli(config, token):
 
 
 @cli.command()
-@click.option('--time', is_flag=True, help='Sort segments by time relative '
-              'to the other athletes. Default is sorting by effort count.')
+@click.argument('order', type=click.Choice(['tries', 'elevation', 'rank', 'time']), default='tries')
 @pass_config
-def segment_ranking(config, time):
+def segment_ranking(config, order):
+    client = config.client
     ridden_segs = read_data(DATAFILE)
-    for v in sorted(ridden_segs.values(), key=lambda v: len(v.efforts), reverse=True):
-        times = [e.elapsed_time.total_seconds() for e in v.efforts]
-        avg_time = np.mean(times)
-        std_dev = np.std(times)
-        print (u'Tries: %3d - Elevation gain: %4d - Average time: %4d sec. - '
-        'Std. variation in time: %3d sec. - Segment: %.30s' % (len(v.efforts), v.total_elevation_gain, avg_time, std_dev,
-                                                         v.name))
+
+    # Crawl leaderboards and times for every segment
+    athlete_id = client.get_athlete().id
+    leaderboards = collections.defaultdict()
+    for k in ridden_segs.keys():
+        try:
+            leaderboards[k] = client.get_segment_leaderboard(k)
+        except:
+            continue
+    #leaderboards = {k: client.get_segment_leaderboard(k) for k in ridden_segs.keys()}
+    ranks = {k: rank(leaderboards[k], athlete_id) for k in ridden_segs.keys()}
+
+    orderings = {
+        'tries' : lambda x: len(x.efforts),
+        'elevation': lambda x: x.total_elevation_gain,
+        'rank': lambda x: ranks[x.id][0],
+        'time': lambda x: x
+    }
+    reversed = {
+        'tries': True,
+        'elevation': True,
+        'rank': False,
+        'time': False
+    }
+    for v in sorted(ridden_segs.values(), key=orderings[order], reverse=reversed[order]):
+        rank_string = '%3d/%4d' % (ranks[v.id][0], ranks[v.id][1])
+        print (u'Position: %s - Tries: %3d - Elevation gain: %4d - Average time: %4d sec. - '
+                'Std. variation in time: %3d sec. - Segment: %.30s - ID: %7s' % (rank_string,
+                                                                       len(v.efforts),
+                                                                       v.total_elevation_gain,
+                                                                       v.avg_time, v.std_time,
+                                                                       v.name, v.id))
+
     return
 
+def rank(leaderboard, athlete_id):
+    if not leaderboard:
+        return (0, 0)
+    entries = leaderboard.entry_count
+    for e in leaderboard.entries:
+        if athlete_id == e.athlete_id:
+            return (e.rank, entries)
+
+
+
+def relative_time():
+    pass
 
 @click.command()
 @click.option('--graph', is_flag=True, help='Show time distribution graph')

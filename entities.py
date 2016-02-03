@@ -1,8 +1,10 @@
+#!/usr/bin/env python
 
+import numpy as np
 
 class RiddenSegment(object):
     """
-    Class represents a specific segment I have ridden at least once. Efforts only comprises my own ones.
+    Class represents a specific segment I have ridden at least once. Efforts only include my own ones.
     """
 
     def __init__(self, id, name, distance, total_elevation_gain, avg_grade, efforts=None):
@@ -12,6 +14,22 @@ class RiddenSegment(object):
         self.total_elevation_gain = total_elevation_gain
         self.avg_grade = avg_grade
         self.efforts = efforts
+
+    @property
+    def times(self):
+        return [e.elapsed_time.total_seconds() for e in self.efforts]
+
+    @property
+    def avg_time(self):
+        return np.mean(self.times)
+
+    @property
+    def std_time(self):
+        return np.std(self.times)
+
+    @property
+    def pr_record(self):
+        return min(self.times)
 
 
 class Effort(object):
