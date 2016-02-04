@@ -5,7 +5,8 @@ import datetime
 import numpy as np
 
 import click
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+import seaborn as sns
 from manage_data import Config, read_data
 
 pass_config = click.make_pass_decorator(Config, ensure=True)
@@ -39,7 +40,7 @@ def segment_ranking(config, order):
         except:
             continue
     #leaderboards = {k: client.get_segment_leaderboard(k) for k in ridden_segs.keys()}
-    ranks = {k: rank(leaderboards[k], athlete_id) for k in ridden_segs.keys()}
+    ranks = {k: rank(leaderboards.get(k), athlete_id) for k in ridden_segs.keys()}
 
     orderings = {
         'tries' : lambda x: len(x.efforts),
@@ -73,27 +74,25 @@ def rank(leaderboard, athlete_id):
             return (e.rank, entries)
 
 
-
 def relative_time():
     pass
 
-@click.command()
-@click.option('--graph', is_flag=True, help='Show time distribution graph')
+
+@cli.command()
+@click.argument('segment_id', type=int)
 @pass_config
-def plot(config):
-    return
-    """
-    segment_id = 5071475 # fechinger berg komplett
-    fechinger_berg = client.get_segment(segment_id)
-    print('{0} athletes have ridden this segment'.format(fechinger_berg.athlete_count))
-    efforts = client.get_segment_efforts(segment_id)
-    X = [x.elapsed_time for x in efforts]
-    X = [datetime.timedelta.total_seconds(x) for x in X]
-    print(len(X))
-    print(X[0])
-    #sns.distplot(X)
+def plot_times(config, segment_id):
+    client = config.client
+    ridden_segs = read_data(DATAFILE)
+
+    all_efforts = client.get_segment_efforts(segment_id)
+    X = [e.elapsed_time for e in all_efforts]
+    X = np.array([datetime.timedelta.total_seconds(x) for x in X])
+    Y = np.array([x for x in ridden_segs[segment_id].times])
+    sns.distplot(X, hist=False, rug=True)
+    sns.distplot(Y, hist=False, rug=True)
     plt.show()
-    """
+    return
 
 
 if __name__ == '__main__':
