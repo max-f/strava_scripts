@@ -41,12 +41,13 @@ def segment_ranking(config, order):
             continue
     #leaderboards = {k: client.get_segment_leaderboard(k) for k in ridden_segs.keys()}
     ranks = {k: rank(leaderboards.get(k), athlete_id) for k in ridden_segs.keys()}
+    rel_times = {k: relative_time(leaderboards.get(k), ridden_segs[k]) for k in ridden_segs.keys()}
 
     orderings = {
         'tries' : lambda x: len(x.efforts),
         'elevation': lambda x: x.total_elevation_gain,
         'rank': lambda x: ranks[x.id][0],
-        'time': lambda x: x
+        'time': lambda x: rel_times[x.id]
     }
     reversed = {
         'tries': True,
@@ -57,13 +58,13 @@ def segment_ranking(config, order):
     for v in sorted(ridden_segs.values(), key=orderings[order], reverse=reversed[order]):
         rank_string = '%3d/%4d' % (ranks[v.id][0], ranks[v.id][1])
         print (u'Position: %s - Tries: %3d - Elevation gain: %4d - Average time: %4d sec. - '
-                'Std. variation in time: %3d sec. - Segment: %.30s - ID: %7s' % (rank_string,
-                                                                       len(v.efforts),
-                                                                       v.total_elevation_gain,
-                                                                       v.avg_time, v.std_time,
-                                                                       v.name, v.id))
+                'Std. variation in time: %3d sec. - Relative to KOM: %3.1f%% '
+               '- Segment: %.30s - ID: %7s' % (rank_string, len(v.efforts), v.total_elevation_gain,
+                                               v.avg_time, v.std_time, rel_times[v.id],
+                                               v.name, v.id))
 
     return
+
 
 def rank(leaderboard, athlete_id):
     if not leaderboard:
@@ -74,14 +75,27 @@ def rank(leaderboard, athlete_id):
             return (e.rank, entries)
 
 
-def relative_time():
-    pass
+def relative_time(leaderboard, ridden_segment):
+    if not leaderboard:
+        return 0
+    all_times = [e.elapsed_time.total_seconds() for e in leaderboard.entries]
+    kom = min(all_times)
+    return (ridden_segment.personal_record / kom * 100)
 
 
 @cli.command()
 @click.argument('segment_id', type=int)
+@click.option('--distribution', '-d', is_flag=True, default=False)
 @pass_config
-def plot_times(config, segment_id):
+def plot_times(config, segment_id, distribution):
+    """
+    Generates a plot to visualize the performance of the current athlete at a specific segment
+    in comparison to other athletes.
+    :param config: Config object providing API access via security token
+    :param segment_id: ID of the strava segment in question
+    :param distribution: Whether to plot the time distribution over efforts instead of a boxplot
+    :return:
+    """
     client = config.client
     ridden_segs = read_data(DATAFILE)
 
@@ -89,10 +103,16 @@ def plot_times(config, segment_id):
     X = [e.elapsed_time for e in all_efforts]
     X = np.array([datetime.timedelta.total_seconds(x) for x in X])
     Y = np.array([x for x in ridden_segs[segment_id].times])
-    sns.distplot(X, hist=False, rug=True)
-    sns.distplot(Y, hist=False, rug=True)
+    if distribution:
+        plt.xlabel('Time in seconds')
+        sns.distplot(X, hist=False, rug=True)
+        sns.distplot(Y, hist=False, rug=True)
+        plt.show()
+        return
+    plt.ylabel('Time in seconds')
+    data = np.array([X, Y])
+    sns.boxplot(data=data, orient='v')
     plt.show()
-    return
 
 
 if __name__ == '__main__':

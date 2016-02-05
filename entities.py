@@ -28,7 +28,7 @@ class RiddenSegment(object):
         return np.std(self.times)
 
     @property
-    def pr_record(self):
+    def personal_record(self):
         return min(self.times)
 
 
