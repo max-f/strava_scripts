@@ -26,10 +26,14 @@ def cli(config, token):
 
 @cli.command()
 @click.argument('order', type=click.Choice(['tries', 'elevation', 'rank', 'time']), default='tries')
+@click.option('--segment', '-s', type=int, default=0, help='restrict to specific segment by ID')
 @pass_config
-def segment_ranking(config, order):
+def segment_ranking(config, order, segment):
     client = config.client
     ridden_segs = read_data(DATAFILE)
+
+    # Restrict to given segment if -s option is specified
+    filter_segments(ridden_segs, segment)
 
     # Crawl leaderboards and times for every segment
     athlete_id = client.get_athlete().id
@@ -39,7 +43,6 @@ def segment_ranking(config, order):
             leaderboards[k] = client.get_segment_leaderboard(k)
         except:
             continue
-    #leaderboards = {k: client.get_segment_leaderboard(k) for k in ridden_segs.keys()}
     ranks = {k: rank(leaderboards.get(k), athlete_id) for k in ridden_segs.keys()}
     rel_times = {k: relative_time(leaderboards.get(k), ridden_segs[k]) for k in ridden_segs.keys()}
 
@@ -49,13 +52,13 @@ def segment_ranking(config, order):
         'rank': lambda x: ranks[x.id][0],
         'time': lambda x: rel_times[x.id]
     }
-    reversed = {
+    reverse = {
         'tries': True,
         'elevation': True,
         'rank': False,
         'time': False
     }
-    for v in sorted(ridden_segs.values(), key=orderings[order], reverse=reversed[order]):
+    for v in sorted(ridden_segs.values(), key=orderings[order], reverse=reverse[order]):
         rank_string = '%3d/%4d' % (ranks[v.id][0], ranks[v.id][1])
         print (u'Position: %s - Tries: %3d - Elevation gain: %4d - Average time: %4d sec. - '
                 'Std. variation in time: %3d sec. - Relative to KOM: %3.1f%% '
@@ -64,6 +67,11 @@ def segment_ranking(config, order):
                                                v.name, v.id))
 
     return
+
+def filter_segments(ridden_segs, segment):
+    if (segment):
+        ridden_segs = {k: v for (k, v) in ridden_segs if k == segment}
+    return ridden_segs
 
 
 def rank(leaderboard, athlete_id):
@@ -113,6 +121,30 @@ def plot_times(config, segment_id, distribution):
     data = np.array([X, Y])
     sns.boxplot(data=data, orient='v')
     plt.show()
+
+
+@cli.command()
+@click.argument('athlete_id', type=int)
+@pass_config
+def get_info(config, athlete_id):
+    client = config.client
+    infos = collections.defaultdict()
+    athlete = client.get_athlete(athlete_id)
+
+    infos['firstname'] = athlete.firstname
+    infos['lastname'] = athlete.lastname
+    infos['weight'] = athlete.weight
+
+    for (k, v) in infos.items():
+        click.echo('%s: %s' % (k, v))
+
+
+@cli.command()
+@click.argument('segmend_id', type=int)
+@pass_config
+def plot_segment_performance_to_kms(config, segment_id):
+    client = config.client
+    pass
 
 
 if __name__ == '__main__':
