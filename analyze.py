@@ -3,6 +3,7 @@
 import collections
 import datetime
 import numpy as np
+from scipy.interpolate import spline
 
 import click
 import matplotlib.pyplot as plt
@@ -116,11 +117,11 @@ def plot_times(config, segment_id, distribution):
         sns.distplot(X, hist=False, rug=True)
         sns.distplot(Y, hist=False, rug=True)
         plt.show()
-        return
-    plt.ylabel('Time in seconds')
-    data = np.array([X, Y])
-    sns.boxplot(data=data, orient='v')
-    plt.show()
+    else:
+        plt.ylabel('Time in seconds')
+        data = np.array([X, Y])
+        sns.boxplot(data=data, orient='v')
+        plt.show()
 
 
 @cli.command()
@@ -140,11 +141,39 @@ def get_info(config, athlete_id):
 
 
 @cli.command()
-@click.argument('segmend_id', type=int)
+@click.argument('segment_id', type=int)
 @pass_config
-def plot_segment_performance_to_kms(config, segment_id):
+def plot_segment_performance_to_investment(config, segment_id):
     client = config.client
-    pass
+    activities = client.get_activities()
+    ridden_segs = read_data(DATAFILE)
+
+    try:
+        efforts = ridden_segs[segment_id].efforts
+    except KeyError:
+        print('Segment with given ID not ridden at least once')
+        print('Possibly update the your ridden segments or check the ID')
+        return
+
+    datetimes = []  # list of datetime.datetime objects
+    distances = []  # list of distances in meters (floats)
+    durations = []  # list of moving times, TimeIntervallAttribute (timedelta (seconds) probably)
+    for a in activities:
+        if a.type != unicode('Ride'):
+            continue
+        datetimes.append(a.start_date)
+        distances.append(a.distance / 1000)  # in km pls
+        durations.append(a.moving_time)
+
+    # TODO: Smooth curves a bit
+    durations = [datetime.timedelta.total_seconds(x) / 60  for x in durations]
+    plt.figure()
+    effort_dates = [e.date for e in efforts]
+    effort_times = [datetime.timedelta.total_seconds(e.elapsed_time) for e in efforts]
+    plt.plot(datetimes, distances)
+    plt.plot(datetimes, durations)
+    plt.plot(effort_dates, effort_times)
+    plt.show()
 
 
 if __name__ == '__main__':
